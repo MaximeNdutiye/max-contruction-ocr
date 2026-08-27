@@ -8,6 +8,7 @@ import {
   type LoadedPdf,
 } from "@/lib/pdf/pdfRenderer";
 import {
+  findDocumentByFile,
   getActiveDocumentId,
   getDocumentMetadata,
   getPdfFile,
@@ -165,19 +166,28 @@ export function useDocument(): UseDocumentResult {
         pdfRef.current = loaded;
 
         const pageCount = getPageCount(loaded);
+        const existing = await findDocumentByFile(file.name, file.size);
+        const isReuse = Boolean(existing);
+
         const meta: DocumentMetadata = {
-          id: createDocumentId(),
+          id: existing?.id ?? createDocumentId(),
           name: file.name,
           pageCount,
           fileSize: file.size,
-          lastOpenedPage: 1,
+          lastOpenedPage: existing
+            ? Math.min(
+                Math.max(1, existing.lastOpenedPage || 1),
+                pageCount,
+              )
+            : 1,
           updatedAt: Date.now(),
         };
 
         await Promise.all([
           savePdfFile(meta.id, pdfBlob),
           saveDocumentMetadata(meta),
-          saveAnnotations(meta.id, []),
+          // Only seed empty annotations for brand-new documents.
+          ...(isReuse ? [] : [saveAnnotations(meta.id, [])]),
           setActiveDocumentId(meta.id),
           requestPersistentStorage(),
         ]);
@@ -190,7 +200,7 @@ export function useDocument(): UseDocumentResult {
 
         setPdf(loaded);
         setDocument(meta);
-        setCurrentPage(1);
+        setCurrentPage(meta.lastOpenedPage);
         setZoom(DEFAULT_ZOOM);
       } catch (err) {
         console.error(err);

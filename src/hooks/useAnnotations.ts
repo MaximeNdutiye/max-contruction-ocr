@@ -87,6 +87,8 @@ export function useAnnotations(
   const persistTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   const annotations = history.present;
+  const presentRef = useRef(annotations);
+  presentRef.current = annotations;
 
   const pageAnnotations = useMemo(
     () =>
@@ -138,6 +140,17 @@ export function useAnnotations(
 
     return () => {
       cancelled = true;
+      // Flush pending edits for the document we're leaving so a fast
+      // PDF switch doesn't drop boxes still in the debounce window.
+      if (persistTimerRef.current) {
+        clearTimeout(persistTimerRef.current);
+        persistTimerRef.current = null;
+      }
+      if (!skipPersistRef.current) {
+        void saveAnnotations(documentId, presentRef.current).catch((err) => {
+          console.error(err);
+        });
+      }
     };
   }, [documentId]);
 
